@@ -15,6 +15,10 @@ import {
   VectorGovError,
   AuthenticationError,
   RateLimitError,
+  AuditLog,
+  AuditLogsResponse,
+  AuditStats,
+  AuditLogsOptions,
 } from './types';
 
 const DEFAULT_BASE_URL = 'https://vectorgov.io/api/v1';
@@ -335,5 +339,155 @@ export class VectorGov {
         return `[${source}]\n${hit.text}`;
       })
       .join('\n\n---\n\n');
+  }
+
+  // ===========================================================================
+  // MÉTODOS DE AUDITORIA
+  // ===========================================================================
+
+  /**
+   * Obtém os logs de auditoria da conta
+   *
+   * @param options - Opções de filtro e paginação
+   * @returns Lista paginada de logs de auditoria
+   *
+   * @example
+   * ```typescript
+   * // Listar logs recentes
+   * const logs = await vg.getAuditLogs({ limit: 10 });
+   *
+   * // Filtrar por severidade
+   * const critical = await vg.getAuditLogs({
+   *   severity: 'critical',
+   *   limit: 50
+   * });
+   *
+   * // Filtrar por período
+   * const lastWeek = await vg.getAuditLogs({
+   *   startDate: '2025-01-10T00:00:00Z',
+   *   endDate: '2025-01-17T23:59:59Z'
+   * });
+   * ```
+   */
+  async getAuditLogs(options: AuditLogsOptions = {}): Promise<AuditLogsResponse> {
+    const {
+      limit = 50,
+      page = 1,
+      severity,
+      eventType,
+      eventCategory,
+      startDate,
+      endDate,
+    } = options;
+
+    const params = new URLSearchParams();
+    params.append('limit', limit.toString());
+    params.append('page', page.toString());
+    if (severity) params.append('severity', severity);
+    if (eventType) params.append('event_type', eventType);
+    if (eventCategory) params.append('event_category', eventCategory);
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+
+    const response = await this.request<{
+      logs: Array<{
+        id: string;
+        event_type: string;
+        event_category: string;
+        severity: string;
+        query_text?: string;
+        detection_types: string[];
+        risk_score?: number;
+        action_taken?: string;
+        endpoint?: string;
+        client_ip?: string;
+        created_at?: string;
+        details: Record<string, unknown>;
+      }>;
+      total: number;
+      page: number;
+      pages: number;
+      limit: number;
+    }>(`/sdk/audit/logs?${params.toString()}`);
+
+    return {
+      logs: response.logs.map(log => ({
+        id: log.id,
+        eventType: log.event_type,
+        eventCategory: log.event_category,
+        severity: log.severity,
+        queryText: log.query_text,
+        detectionTypes: log.detection_types || [],
+        riskScore: log.risk_score,
+        actionTaken: log.action_taken,
+        endpoint: log.endpoint,
+        clientIp: log.client_ip,
+        createdAt: log.created_at,
+        details: log.details || {},
+      })),
+      total: response.total,
+      page: response.page,
+      pages: response.pages,
+      limit: response.limit,
+    };
+  }
+
+  /**
+   * Obtém estatísticas agregadas de auditoria
+   *
+   * @param days - Número de dias para agregar (padrão: 30)
+   * @returns Estatísticas de auditoria do período
+   *
+   * @example
+   * ```typescript
+   * // Estatísticas dos últimos 30 dias
+   * const stats = await vg.getAuditStats();
+   * console.log(`Total de eventos: ${stats.totalEvents}`);
+   * console.log(`Bloqueados: ${stats.blockedCount}`);
+   *
+   * // Estatísticas da última semana
+   * const weekly = await vg.getAuditStats(7);
+   * ```
+   */
+  async getAuditStats(days: number = 30): Promise<AuditStats> {
+    const response = await this.request<{
+      total_events: number;
+      events_by_type: Record<string, number>;
+      events_by_severity: Record<string, number>;
+      events_by_category: Record<string, number>;
+      blocked_count: number;
+      warning_count: number;
+      period_days: number;
+    }>(`/sdk/audit/stats?days=${days}`);
+
+    return {
+      totalEvents: response.total_events,
+      eventsByType: response.events_by_type,
+      eventsBySeverity: response.events_by_severity,
+      eventsByCategory: response.events_by_category,
+      blockedCount: response.blocked_count,
+      warningCount: response.warning_count,
+      periodDays: response.period_days,
+    };
+  }
+
+  /**
+   * Obtém a lista de tipos de eventos de auditoria disponíveis
+   *
+   * @returns Lista de tipos de eventos
+   *
+   * @example
+   * ```typescript
+   * const types = await vg.getAuditEventTypes();
+   * console.log('Tipos disponíveis:', types);
+   * // ['pii_detected', 'injection_detected', 'low_relevance_query', ...]
+   * ```
+   */
+  async getAuditEventTypes(): Promise<string[]> {
+    const response = await this.request<{
+      event_types: string[];
+    }>('/sdk/audit/event-types');
+
+    return response.event_types;
   }
 }

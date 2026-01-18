@@ -167,3 +167,85 @@ export class RateLimitError extends VectorGovError {
     this.name = 'RateLimitError';
   }
 }
+
+// =============================================================================
+// TIPOS DE AUDITORIA
+// =============================================================================
+
+/** Registro de evento de auditoria */
+export interface AuditLog {
+  /** ID único do evento */
+  id: string;
+  /** Tipo do evento (pii_detected, injection_detected, etc.) */
+  eventType: string;
+  /** Categoria do evento (security, performance, validation) */
+  eventCategory: string;
+  /** Severidade do evento (info, warning, critical) */
+  severity: string;
+  /** Texto da query que gerou o evento (se aplicável) */
+  queryText?: string;
+  /** Tipos de detecção ativados (para eventos de segurança) */
+  detectionTypes: string[];
+  /** Score de risco (0.0 a 1.0) */
+  riskScore?: number;
+  /** Ação tomada pelo sistema (logged, blocked, warned) */
+  actionTaken?: string;
+  /** Endpoint que gerou o evento */
+  endpoint?: string;
+  /** IP do cliente (anonimizado) */
+  clientIp?: string;
+  /** Data/hora do evento (ISO 8601) */
+  createdAt?: string;
+  /** Detalhes adicionais do evento */
+  details: Record<string, unknown>;
+}
+
+/** Resposta da listagem de logs de auditoria */
+export interface AuditLogsResponse {
+  /** Lista de logs de auditoria */
+  logs: AuditLog[];
+  /** Total de logs encontrados */
+  total: number;
+  /** Página atual */
+  page: number;
+  /** Total de páginas */
+  pages: number;
+  /** Limite por página */
+  limit: number;
+}
+
+/** Estatísticas agregadas de auditoria */
+export interface AuditStats {
+  /** Total de eventos no período */
+  totalEvents: number;
+  /** Contagem de eventos por tipo */
+  eventsByType: Record<string, number>;
+  /** Contagem de eventos por severidade */
+  eventsBySeverity: Record<string, number>;
+  /** Contagem de eventos por categoria */
+  eventsByCategory: Record<string, number>;
+  /** Quantidade de eventos bloqueados */
+  blockedCount: number;
+  /** Quantidade de avisos */
+  warningCount: number;
+  /** Período em dias das estatísticas */
+  periodDays: number;
+}
+
+/** Opções para consulta de logs de auditoria */
+export interface AuditLogsOptions {
+  /** Número máximo de resultados por página (padrão: 50) */
+  limit?: number;
+  /** Número da página (padrão: 1) */
+  page?: number;
+  /** Filtrar por severidade (info, warning, critical) */
+  severity?: string;
+  /** Filtrar por tipo de evento */
+  eventType?: string;
+  /** Filtrar por categoria de evento */
+  eventCategory?: string;
+  /** Data inicial (ISO 8601) */
+  startDate?: string;
+  /** Data final (ISO 8601) */
+  endDate?: string;
+}

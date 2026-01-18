@@ -40,6 +40,11 @@ export type {
   Citation,
   ChatMessage,
   FeedbackResponse,
+  // Tipos de Auditoria
+  AuditLog,
+  AuditLogsResponse,
+  AuditStats,
+  AuditLogsOptions,
 } from './types';
 
 export {
