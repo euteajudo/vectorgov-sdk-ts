@@ -1,0 +1,54 @@
+{
+  "name": "vectorgov",
+  "version": "0.1.0",
+  "description": "SDK TypeScript para a API VectorGov - Busca semântica em legislação brasileira",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "lint": "eslint src/",
+    "test": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "vectorgov",
+    "legal",
+    "legislation",
+    "semantic-search",
+    "rag",
+    "licitacao",
+    "brazil",
+    "sdk"
+  ],
+  "author": "VectorGov <contato@vectorgov.io>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/euteajudo/vectorgov-sdk-ts"
+  },
+  "bugs": {
+    "url": "https://github.com/euteajudo/vectorgov-sdk-ts/issues"
+  },
+  "homepage": "https://vectorgov.io",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
