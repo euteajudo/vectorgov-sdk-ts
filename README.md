@@ -24,6 +24,30 @@ yarn add vectorgov
 pnpm add vectorgov
 ```
 
+## Gerar API key e testar no Playground (recomendado)
+
+### 1) Criar uma API key (site)
+
+1. Faça login no VectorGov.
+2. Abra **API Keys**: `https://vectorgov.io/api-keys`
+3. Clique em **Nova API Key**, informe um nome e confirme.
+4. **Copie e salve a chave completa** (ela é exibida uma única vez).
+
+### 2) Testar no Playground (interface web)
+
+1. Abra o **Playground**: `https://vectorgov.io/playground`
+2. Faça uma pergunta e ajuste o modo/topK/cache.
+3. Copie um exemplo em **Código equivalente** e substitua `vg_sua_chave` pela sua API key.
+
+### 3) Ver limite e acompanhar uso
+
+- Em `https://vectorgov.io/api-keys` você consegue ver:
+  - **Rate limit** (req/min)
+  - **Total de requests**
+  - **Status** (ativa/revogada)
+- Para detalhes do minuto atual, abra a configuração da chave e veja **Uso no minuto atual** e **Restantes**.
+- Para logs detalhados de chamadas, use **Uso da API** (quando disponível no seu menu).
+
 ## Uso Rápido
 
 ```typescript
@@ -55,7 +79,8 @@ const results = await vg.search('Quais os critérios de julgamento?');
 
 // Gera resposta com GPT-4
 const response = await openai.chat.completions.create({
-  model: 'gpt-4',
+  // Use o modelo que preferir
+  model: 'SEU_MODELO',
   messages: results.toMessages('Quais os critérios de julgamento?')
 });
 
@@ -75,7 +100,8 @@ const results = await vg.search('Quando o ETP pode ser dispensado?');
 const messages = results.toMessages('Quando o ETP pode ser dispensado?');
 
 const response = await anthropic.messages.create({
-  model: 'claude-sonnet-4-20250514',
+  // Use o modelo que preferir
+  model: 'SEU_MODELO',
   max_tokens: 1024,
   system: messages[0].content,
   messages: [{ role: 'user', content: messages[1].content }]
@@ -97,7 +123,8 @@ const results = await vg.search('O que é pesquisa de preços?');
 const messages = results.toMessages('O que é pesquisa de preços?');
 
 const model = genAI.getGenerativeModel({
-  model: 'gemini-2.0-flash',
+  // Use o modelo que preferir
+  model: 'SEU_MODELO',
   systemInstruction: messages[0].content
 });
 
