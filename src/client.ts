@@ -19,19 +19,83 @@ import {
   AuditLogsResponse,
   AuditStats,
   AuditLogsOptions,
+  // Novos tipos
+  StoreResponseOptions,
+  StoreResponseResult,
+  StreamChunk,
+  Citation,
+  DocumentSummary,
+  DocumentsResponse,
+  ListDocumentsOptions,
+  UploadResponse,
+  IngestStatus,
+  EnrichStatus,
+  DeleteResponse,
+  OpenAITool,
+  AnthropicTool,
+  GoogleTool,
+  SystemPromptStyle,
 } from './types';
 
 const DEFAULT_BASE_URL = 'https://vectorgov.io/api/v1';
 const DEFAULT_TIMEOUT = 30000;
 
-/** System prompt padrão para geração de respostas */
-const SYSTEM_PROMPT = `Você é um assistente jurídico especializado em legislação brasileira de licitações e contratos administrativos.
+/** System prompts disponíveis */
+const SYSTEM_PROMPTS: Record<SystemPromptStyle, string> = {
+  default: `Você é um assistente jurídico especializado em legislação brasileira de licitações e contratos administrativos.
 
 Use APENAS as informações fornecidas no contexto para responder. Se a informação não estiver no contexto, diga que não encontrou.
 
 Ao citar artigos, use o formato: [Art. X] ou [Art. X, §Y] ou [Art. X, inciso Y].
 
-Responda de forma clara, objetiva e em português brasileiro.`;
+Responda de forma clara, objetiva e em português brasileiro.`,
+
+  concise: `Você é um assistente jurídico objetivo. Responda de forma direta e breve usando APENAS o contexto fornecido. Cite artigos no formato [Art. X].`,
+
+  detailed: `Você é um especialista em legislação brasileira de licitações e contratos.
+
+Ao responder:
+1. Use APENAS informações do contexto fornecido
+2. Estruture a resposta com tópicos quando apropriado
+3. Cite todos os artigos relevantes no formato [Art. X, §Y, inciso Z]
+4. Explique os termos técnicos quando necessário
+5. Indique se há lacunas no contexto para a pergunta
+
+Responda em português brasileiro de forma clara e completa.`,
+
+  chatbot: `Você é o VectorGov, um assistente amigável especializado em legislação de licitações.
+
+Responda de forma conversacional mas precisa, usando o contexto fornecido. Cite artigos quando relevante [Art. X]. Se não souber, diga que não encontrou a informação.`,
+};
+
+/** Schema da ferramenta VectorGov para function calling */
+const TOOL_SCHEMA = {
+  name: 'vectorgov_search',
+  description: 'Busca informações em legislação brasileira de licitações e contratos. Use para responder perguntas sobre leis, decretos, instruções normativas e portarias relacionadas a contratações públicas.',
+  parameters: {
+    type: 'object' as const,
+    properties: {
+      query: {
+        type: 'string',
+        description: 'Pergunta ou termo de busca sobre legislação de licitações',
+      },
+      tipo: {
+        type: 'string',
+        enum: ['lei', 'decreto', 'in', 'portaria'],
+        description: 'Tipo de documento para filtrar (opcional)',
+      },
+      ano: {
+        type: 'integer',
+        description: 'Ano do documento para filtrar (opcional)',
+      },
+      top_k: {
+        type: 'integer',
+        description: 'Quantidade de resultados (1-20, padrão: 5)',
+      },
+    } as Record<string, unknown>,
+    required: ['query'] as string[],
+  },
+};
 
 /**
  * Cliente para a API VectorGov
@@ -284,6 +348,97 @@ export class VectorGov {
   }
 
   /**
+   * Faz uma pergunta com resposta em streaming
+   *
+   * @param query - Pergunta do usuário
+   * @param options - Opções de busca
+   * @yields StreamChunk com cada parte da resposta
+   *
+   * @example
+   * ```typescript
+   * for await (const chunk of vg.askStream('O que é ETP?')) {
+   *   if (chunk.type === 'token') {
+   *     process.stdout.write(chunk.content || '');
+   *   } else if (chunk.type === 'complete') {
+   *     console.log(`\n\nFontes: ${chunk.citations?.length} citações`);
+   *   }
+   * }
+   * ```
+   */
+  async *askStream(
+    query: string,
+    options: SearchOptions = {}
+  ): AsyncGenerator<StreamChunk> {
+    const { topK = 5, mode = 'balanced' } = options;
+
+    const url = `${this.baseUrl}/sdk/ask/stream`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': this.apiKey,
+      },
+      body: JSON.stringify({
+        query,
+        top_k: topK,
+        mode,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new VectorGovError(`Stream request failed: ${response.status}`);
+    }
+
+    if (!response.body) {
+      throw new VectorGovError('No response body for streaming');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') return;
+
+            try {
+              const event = JSON.parse(data);
+              const chunk: StreamChunk = {
+                type: event.type || 'token',
+                content: event.content,
+                query: event.query,
+                chunks: event.chunks,
+                timeMs: event.time_ms,
+                citations: event.citations,
+                queryHash: event.query_hash,
+                message: event.message,
+              };
+              yield chunk;
+
+              if (event.type === 'error') return;
+            } catch {
+              // Ignore parse errors
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  /**
    * Envia feedback (like/dislike) para uma resposta
    *
    * @param queryId - ID da query (de SearchMetadata ou AskMetadata)
@@ -311,38 +466,446 @@ export class VectorGov {
     };
   }
 
-  /**
-   * Converte hits para formato de mensagens de chat
-   */
-  private hitsToMessages(hits: SearchHit[], query: string): ChatMessage[] {
-    const context = this.hitsToContext(hits);
-
-    return [
-      {
-        role: 'system',
-        content: SYSTEM_PROMPT,
-      },
-      {
-        role: 'user',
-        content: `Contexto:\n${context}\n\nPergunta: ${query}`,
-      },
-    ];
-  }
+  // ===========================================================================
+  // BYOLLM - Bring Your Own LLM
+  // ===========================================================================
 
   /**
-   * Converte hits para texto de contexto
+   * Armazena resposta de LLM externo no cache do VectorGov
+   *
+   * Use quando você gera uma resposta com seu próprio LLM e quer:
+   * 1. Habilitar o sistema de feedback (like/dislike)
+   * 2. Contribuir para melhorias futuras
+   *
+   * @param options - Dados da resposta
+   * @returns Resultado com queryHash para usar em feedback()
+   *
+   * @example
+   * ```typescript
+   * // 1. Busca no VectorGov
+   * const results = await vg.search('O que é ETP?');
+   *
+   * // 2. Gera resposta com seu LLM
+   * const answer = await openai.chat.completions.create({
+   *   model: 'gpt-4o',
+   *   messages: results.toMessages('O que é ETP?')
+   * });
+   *
+   * // 3. Salva no VectorGov
+   * const stored = await vg.storeResponse({
+   *   query: 'O que é ETP?',
+   *   answer: answer.choices[0].message.content,
+   *   provider: 'OpenAI',
+   *   model: 'gpt-4o',
+   *   chunksUsed: results.hits.length
+   * });
+   *
+   * // 4. Agora pode receber feedback
+   * await vg.feedback(stored.queryHash, true);
+   * ```
    */
-  private hitsToContext(hits: SearchHit[]): string {
-    return hits
-      .map((hit, i) => {
-        const source = hit.source || `Resultado ${i + 1}`;
-        return `[${source}]\n${hit.text}`;
-      })
-      .join('\n\n---\n\n');
+  async storeResponse(options: StoreResponseOptions): Promise<StoreResponseResult> {
+    const response = await this.request<{
+      success: boolean;
+      query_hash: string;
+      message: string;
+    }>('/cache/store', {
+      method: 'POST',
+      body: JSON.stringify({
+        query: options.query,
+        answer: options.answer,
+        provider: options.provider,
+        model: options.model,
+        chunks_used: options.chunksUsed || 0,
+        latency_ms: options.latencyMs || 0,
+        retrieval_ms: options.retrievalMs || 0,
+        generation_ms: options.generationMs || 0,
+      }),
+    });
+
+    return {
+      success: response.success,
+      queryHash: response.query_hash,
+      message: response.message,
+    };
   }
 
   // ===========================================================================
-  // MÉTODOS DE AUDITORIA
+  // SYSTEM PROMPTS
+  // ===========================================================================
+
+  /**
+   * Retorna um system prompt pré-definido
+   *
+   * @param style - Estilo do prompt (default, concise, detailed, chatbot)
+   * @returns String com o system prompt
+   *
+   * @example
+   * ```typescript
+   * const prompt = vg.getSystemPrompt('detailed');
+   * const messages = results.toMessages('query');
+   * messages[0].content = prompt; // Substitui o system prompt
+   * ```
+   */
+  getSystemPrompt(style: SystemPromptStyle = 'default'): string {
+    return SYSTEM_PROMPTS[style] || SYSTEM_PROMPTS.default;
+  }
+
+  /**
+   * Lista os estilos de system prompt disponíveis
+   */
+  get availablePrompts(): SystemPromptStyle[] {
+    return Object.keys(SYSTEM_PROMPTS) as SystemPromptStyle[];
+  }
+
+  // ===========================================================================
+  // FUNCTION CALLING TOOLS
+  // ===========================================================================
+
+  /**
+   * Retorna a ferramenta VectorGov no formato OpenAI Function Calling
+   *
+   * @example
+   * ```typescript
+   * const response = await openai.chat.completions.create({
+   *   model: 'gpt-4o',
+   *   messages: [...],
+   *   tools: [vg.toOpenAITool()],
+   * });
+   * ```
+   */
+  toOpenAITool(): OpenAITool {
+    return {
+      type: 'function',
+      function: {
+        name: TOOL_SCHEMA.name,
+        description: TOOL_SCHEMA.description,
+        parameters: TOOL_SCHEMA.parameters,
+      },
+    };
+  }
+
+  /**
+   * Retorna a ferramenta VectorGov no formato Anthropic Claude Tools
+   *
+   * @example
+   * ```typescript
+   * const response = await anthropic.messages.create({
+   *   model: 'claude-sonnet-4-20250514',
+   *   messages: [...],
+   *   tools: [vg.toAnthropicTool()],
+   * });
+   * ```
+   */
+  toAnthropicTool(): AnthropicTool {
+    return {
+      name: TOOL_SCHEMA.name,
+      description: TOOL_SCHEMA.description,
+      input_schema: TOOL_SCHEMA.parameters,
+    };
+  }
+
+  /**
+   * Retorna a ferramenta VectorGov no formato Google Gemini
+   *
+   * @example
+   * ```typescript
+   * const model = genai.GenerativeModel({
+   *   model: 'gemini-2.0-flash',
+   *   tools: [vg.toGoogleTool()],
+   * });
+   * ```
+   */
+  toGoogleTool(): GoogleTool {
+    return {
+      name: TOOL_SCHEMA.name,
+      description: TOOL_SCHEMA.description,
+      parameters: TOOL_SCHEMA.parameters,
+    };
+  }
+
+  /**
+   * Executa uma chamada de ferramenta e retorna o resultado formatado
+   *
+   * @param toolCall - Objeto de tool_call do LLM (OpenAI, Anthropic ou dict)
+   * @param mode - Modo de busca opcional
+   * @returns String formatada com os resultados
+   *
+   * @example
+   * ```typescript
+   * // OpenAI
+   * if (response.choices[0].message.tool_calls) {
+   *   const toolCall = response.choices[0].message.tool_calls[0];
+   *   const result = await vg.executeToolCall(toolCall);
+   *   // Passa result de volta para o LLM
+   * }
+   *
+   * // Anthropic
+   * for (const block of response.content) {
+   *   if (block.type === 'tool_use') {
+   *     const result = await vg.executeToolCall(block);
+   *   }
+   * }
+   * ```
+   */
+  async executeToolCall(
+    toolCall: unknown,
+    mode?: SearchOptions['mode']
+  ): Promise<string> {
+    const args = this.extractToolArguments(toolCall);
+
+    const result = await this.search(args.query, {
+      topK: args.top_k || 5,
+      mode: mode || 'balanced',
+      tipoDocumento: args.tipo,
+      ano: args.ano,
+    });
+
+    return this.formatToolResponse(result);
+  }
+
+  /**
+   * Extrai argumentos de diferentes formatos de tool_call
+   */
+  private extractToolArguments(toolCall: unknown): {
+    query: string;
+    tipo?: string;
+    ano?: number;
+    top_k?: number;
+  } {
+    let args: unknown;
+
+    // OpenAI format
+    if (
+      typeof toolCall === 'object' &&
+      toolCall !== null &&
+      'function' in toolCall
+    ) {
+      const tc = toolCall as { function: { arguments: string | object } };
+      const rawArgs = tc.function.arguments;
+      args = typeof rawArgs === 'string' ? JSON.parse(rawArgs) : rawArgs;
+    }
+    // Anthropic format
+    else if (
+      typeof toolCall === 'object' &&
+      toolCall !== null &&
+      'input' in toolCall
+    ) {
+      args = (toolCall as { input: unknown }).input;
+    }
+    // Dict format
+    else if (typeof toolCall === 'object' && toolCall !== null) {
+      if ('args' in toolCall) {
+        args = (toolCall as { args: unknown }).args;
+      } else {
+        args = toolCall;
+      }
+    } else {
+      throw new VectorGovError('Formato de tool_call não reconhecido');
+    }
+
+    // Valida que args tem query
+    if (
+      typeof args !== 'object' ||
+      args === null ||
+      !('query' in args) ||
+      typeof (args as { query: unknown }).query !== 'string'
+    ) {
+      throw new VectorGovError('tool_call deve conter campo "query" do tipo string');
+    }
+
+    return args as { query: string; tipo?: string; ano?: number; top_k?: number };
+  }
+
+  /**
+   * Formata resultado da busca para retornar ao LLM
+   */
+  private formatToolResponse(result: SearchResult): string {
+    if (result.hits.length === 0) {
+      return 'Nenhum resultado encontrado para esta busca.';
+    }
+
+    const parts = result.hits.map((hit, i) => {
+      const source = hit.source || `Resultado ${i + 1}`;
+      return `[${source}]\n${hit.text}`;
+    });
+
+    return `Encontrados ${result.total} resultados:\n\n${parts.join('\n\n---\n\n')}`;
+  }
+
+  // ===========================================================================
+  // GESTÃO DE DOCUMENTOS
+  // ===========================================================================
+
+  /**
+   * Lista os documentos disponíveis
+   *
+   * @param options - Opções de paginação
+   * @returns Lista paginada de documentos
+   */
+  async listDocuments(options: ListDocumentsOptions = {}): Promise<DocumentsResponse> {
+    const { page = 1, limit = 20 } = options;
+
+    const response = await this.request<{
+      documents: Array<{
+        document_id: string;
+        tipo_documento: string;
+        numero: string;
+        ano: number;
+        titulo?: string;
+        descricao?: string;
+        chunks_count?: number;
+        enriched_count?: number;
+      }>;
+      total: number;
+      page: number;
+      pages: number;
+    }>(`/sdk/documents?page=${page}&limit=${limit}`);
+
+    return {
+      documents: response.documents.map(doc => ({
+        documentId: doc.document_id,
+        tipoDocumento: doc.tipo_documento,
+        numero: doc.numero,
+        ano: doc.ano,
+        titulo: doc.titulo,
+        descricao: doc.descricao,
+        chunksCount: doc.chunks_count || 0,
+        enrichedCount: doc.enriched_count || 0,
+      })),
+      total: response.total,
+      page: response.page,
+      pages: response.pages,
+    };
+  }
+
+  /**
+   * Obtém detalhes de um documento específico
+   *
+   * @param documentId - ID do documento
+   * @returns Detalhes do documento
+   */
+  async getDocument(documentId: string): Promise<DocumentSummary> {
+    const response = await this.request<{
+      document_id: string;
+      tipo_documento: string;
+      numero: string;
+      ano: number;
+      titulo?: string;
+      descricao?: string;
+      chunks_count?: number;
+      enriched_count?: number;
+    }>(`/sdk/documents/${documentId}`);
+
+    return {
+      documentId: response.document_id,
+      tipoDocumento: response.tipo_documento,
+      numero: response.numero,
+      ano: response.ano,
+      titulo: response.titulo,
+      descricao: response.descricao,
+      chunksCount: response.chunks_count || 0,
+      enrichedCount: response.enriched_count || 0,
+    };
+  }
+
+  /**
+   * Obtém o status de uma ingestão
+   *
+   * @param taskId - ID da task de ingestão
+   * @returns Status da ingestão
+   */
+  async getIngestStatus(taskId: string): Promise<IngestStatus> {
+    const response = await this.request<{
+      task_id: string;
+      status: string;
+      progress: number;
+      message: string;
+      document_id?: string;
+      chunks_created?: number;
+    }>(`/sdk/ingest/status/${taskId}`);
+
+    return {
+      taskId: response.task_id,
+      status: response.status,
+      progress: response.progress,
+      message: response.message,
+      documentId: response.document_id,
+      chunksCreated: response.chunks_created || 0,
+    };
+  }
+
+  /**
+   * Inicia o enriquecimento de um documento
+   *
+   * @param documentId - ID do documento
+   * @returns ID da task de enriquecimento
+   */
+  async startEnrichment(documentId: string): Promise<{ taskId: string; message: string }> {
+    const response = await this.request<{
+      task_id: string;
+      message: string;
+    }>('/sdk/documents/enrich', {
+      method: 'POST',
+      body: JSON.stringify({ document_id: documentId }),
+    });
+
+    return {
+      taskId: response.task_id,
+      message: response.message,
+    };
+  }
+
+  /**
+   * Obtém o status de um enriquecimento
+   *
+   * @param taskId - ID da task de enriquecimento
+   * @returns Status do enriquecimento
+   */
+  async getEnrichmentStatus(taskId: string): Promise<EnrichStatus> {
+    const response = await this.request<{
+      task_id: string;
+      status: string;
+      progress: number;
+      chunks_enriched: number;
+      chunks_pending: number;
+      chunks_failed: number;
+      errors: string[];
+    }>(`/sdk/enrich/status/${taskId}`);
+
+    return {
+      taskId: response.task_id,
+      status: response.status,
+      progress: response.progress,
+      chunksEnriched: response.chunks_enriched,
+      chunksPending: response.chunks_pending,
+      chunksFailed: response.chunks_failed,
+      errors: response.errors || [],
+    };
+  }
+
+  /**
+   * Deleta um documento
+   *
+   * @param documentId - ID do documento
+   * @returns Resultado da deleção
+   */
+  async deleteDocument(documentId: string): Promise<DeleteResponse> {
+    const response = await this.request<{
+      success: boolean;
+      message: string;
+    }>(`/sdk/documents/${documentId}`, {
+      method: 'DELETE',
+    });
+
+    return {
+      success: response.success,
+      message: response.message,
+    };
+  }
+
+  // ===========================================================================
+  // AUDITORIA
   // ===========================================================================
 
   /**
@@ -489,5 +1052,39 @@ export class VectorGov {
     }>('/sdk/audit/event-types');
 
     return response.event_types;
+  }
+
+  // ===========================================================================
+  // MÉTODOS AUXILIARES
+  // ===========================================================================
+
+  /**
+   * Converte hits para formato de mensagens de chat
+   */
+  private hitsToMessages(hits: SearchHit[], query: string): ChatMessage[] {
+    const context = this.hitsToContext(hits);
+
+    return [
+      {
+        role: 'system',
+        content: SYSTEM_PROMPTS.default,
+      },
+      {
+        role: 'user',
+        content: `Contexto:\n${context}\n\nPergunta: ${query}`,
+      },
+    ];
+  }
+
+  /**
+   * Converte hits para texto de contexto
+   */
+  private hitsToContext(hits: SearchHit[]): string {
+    return hits
+      .map((hit, i) => {
+        const source = hit.source || `Resultado ${i + 1}`;
+        return `[${source}]\n${hit.text}`;
+      })
+      .join('\n\n---\n\n');
   }
 }

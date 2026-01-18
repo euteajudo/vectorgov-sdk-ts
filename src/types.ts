@@ -249,3 +249,202 @@ export interface AuditLogsOptions {
   /** Data final (ISO 8601) */
   endDate?: string;
 }
+
+// =============================================================================
+// TIPOS PARA BYOLLM (Bring Your Own LLM)
+// =============================================================================
+
+/** Opções para armazenar resposta de LLM externo */
+export interface StoreResponseOptions {
+  /** Pergunta original */
+  query: string;
+  /** Resposta gerada pelo LLM */
+  answer: string;
+  /** Provedor do LLM (ex: "OpenAI", "Google", "Anthropic") */
+  provider: string;
+  /** Modelo usado (ex: "gpt-4o", "gemini-2.0-flash") */
+  model: string;
+  /** Quantidade de chunks usados como contexto */
+  chunksUsed?: number;
+  /** Latência total em ms */
+  latencyMs?: number;
+  /** Tempo de busca em ms */
+  retrievalMs?: number;
+  /** Tempo de geração em ms */
+  generationMs?: number;
+}
+
+/** Resultado do armazenamento de resposta */
+export interface StoreResponseResult {
+  /** Se foi armazenado com sucesso */
+  success: boolean;
+  /** Hash da query para uso em feedback */
+  queryHash: string;
+  /** Mensagem de status */
+  message: string;
+}
+
+// =============================================================================
+// TIPOS PARA STREAMING
+// =============================================================================
+
+/** Chunk de resposta em streaming */
+export interface StreamChunk {
+  /** Tipo do chunk (start, token, complete, error) */
+  type: 'start' | 'token' | 'complete' | 'error';
+  /** Conteúdo do chunk (token ou mensagem) */
+  content?: string;
+  /** Query original (em start) */
+  query?: string;
+  /** Chunks usados (em start) */
+  chunks?: number;
+  /** Tempo em ms (em complete) */
+  timeMs?: number;
+  /** Citações (em complete) */
+  citations?: Citation[];
+  /** Hash da query (em complete) */
+  queryHash?: string;
+  /** Mensagem de erro (em error) */
+  message?: string;
+}
+
+// =============================================================================
+// TIPOS PARA GESTÃO DE DOCUMENTOS
+// =============================================================================
+
+/** Resumo de um documento */
+export interface DocumentSummary {
+  /** ID único do documento */
+  documentId: string;
+  /** Tipo do documento (LEI, DECRETO, IN, etc) */
+  tipoDocumento: string;
+  /** Número do documento */
+  numero: string;
+  /** Ano do documento */
+  ano: number;
+  /** Título do documento */
+  titulo?: string;
+  /** Descrição/ementa */
+  descricao?: string;
+  /** Quantidade de chunks */
+  chunksCount: number;
+  /** Quantidade de chunks enriquecidos */
+  enrichedCount: number;
+}
+
+/** Resposta da listagem de documentos */
+export interface DocumentsResponse {
+  /** Lista de documentos */
+  documents: DocumentSummary[];
+  /** Total de documentos */
+  total: number;
+  /** Página atual */
+  page: number;
+  /** Total de páginas */
+  pages: number;
+}
+
+/** Opções para listagem de documentos */
+export interface ListDocumentsOptions {
+  /** Página (padrão: 1) */
+  page?: number;
+  /** Limite por página (padrão: 20) */
+  limit?: number;
+}
+
+/** Resposta de upload */
+export interface UploadResponse {
+  /** Se foi iniciado com sucesso */
+  success: boolean;
+  /** Mensagem de status */
+  message: string;
+  /** ID do documento criado */
+  documentId: string;
+  /** ID da task de ingestão */
+  taskId: string;
+}
+
+/** Status de ingestão */
+export interface IngestStatus {
+  /** ID da task */
+  taskId: string;
+  /** Status (pending, processing, completed, failed) */
+  status: string;
+  /** Progresso (0-100) */
+  progress: number;
+  /** Mensagem de status */
+  message: string;
+  /** ID do documento */
+  documentId?: string;
+  /** Chunks criados */
+  chunksCreated: number;
+}
+
+/** Status de enriquecimento */
+export interface EnrichStatus {
+  /** ID da task */
+  taskId: string;
+  /** Status (pending, processing, completed, failed) */
+  status: string;
+  /** Progresso (0-100) */
+  progress: number;
+  /** Chunks enriquecidos */
+  chunksEnriched: number;
+  /** Chunks pendentes */
+  chunksPending: number;
+  /** Chunks com erro */
+  chunksFailed: number;
+  /** Lista de erros */
+  errors: string[];
+}
+
+/** Resposta de deleção */
+export interface DeleteResponse {
+  /** Se foi deletado com sucesso */
+  success: boolean;
+  /** Mensagem de status */
+  message: string;
+}
+
+// =============================================================================
+// TIPOS PARA FUNCTION CALLING
+// =============================================================================
+
+/** Definição de ferramenta para OpenAI */
+export interface OpenAITool {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: {
+      type: 'object';
+      properties: Record<string, unknown>;
+      required: string[];
+    };
+  };
+}
+
+/** Definição de ferramenta para Anthropic */
+export interface AnthropicTool {
+  name: string;
+  description: string;
+  input_schema: {
+    type: 'object';
+    properties: Record<string, unknown>;
+    required: string[];
+  };
+}
+
+/** Definição de ferramenta para Google Gemini */
+export interface GoogleTool {
+  name: string;
+  description: string;
+  parameters: {
+    type: 'object';
+    properties: Record<string, unknown>;
+    required: string[];
+  };
+}
+
+/** Estilos de system prompt disponíveis */
+export type SystemPromptStyle = 'default' | 'concise' | 'detailed' | 'chatbot';

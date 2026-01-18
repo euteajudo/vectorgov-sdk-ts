@@ -181,6 +181,152 @@ await vg.feedback(results.metadata.queryId, true);
 await vg.feedback(results.metadata.queryId, false);
 ```
 
+## Streaming
+
+```typescript
+// Resposta em tempo real com Server-Sent Events
+for await (const chunk of vg.askStream('O que é ETP?')) {
+  if (chunk.type === 'token') {
+    process.stdout.write(chunk.content || '');
+  } else if (chunk.type === 'complete') {
+    console.log('\n\nCitações:', chunk.citations);
+  }
+}
+```
+
+## System Prompts
+
+```typescript
+// Ver prompts disponíveis
+console.log(vg.availablePrompts); // ['default', 'concise', 'detailed', 'chatbot']
+
+// Obter prompt específico
+const prompt = vg.getSystemPrompt('detailed');
+
+// Usar com seu LLM
+const results = await vg.search('O que é ETP?');
+const response = await openai.chat.completions.create({
+  model: 'gpt-4',
+  messages: [
+    { role: 'system', content: prompt + '\n\n' + results.toContext() },
+    { role: 'user', content: 'O que é ETP?' }
+  ]
+});
+```
+
+## Function Calling (Agentes)
+
+Use VectorGov como ferramenta em agentes de IA:
+
+### OpenAI Function Calling
+
+```typescript
+const tools = [vg.toOpenAITool()];
+
+const response = await openai.chat.completions.create({
+  model: 'gpt-4',
+  messages: [{ role: 'user', content: 'Pesquise sobre ETP' }],
+  tools,
+  tool_choice: 'auto'
+});
+
+// Se o modelo chamou a ferramenta
+const toolCall = response.choices[0].message.tool_calls?.[0];
+if (toolCall) {
+  const result = await vg.executeToolCall(toolCall);
+  console.log(result);
+}
+```
+
+### Anthropic Claude Tools
+
+```typescript
+const tools = [vg.toAnthropicTool()];
+
+const response = await anthropic.messages.create({
+  model: 'claude-sonnet-4-20250514',
+  max_tokens: 1024,
+  tools,
+  messages: [{ role: 'user', content: 'Pesquise sobre ETP' }]
+});
+```
+
+### Google Gemini Tools
+
+```typescript
+const tools = [vg.toGoogleTool()];
+// Use com a API do Gemini
+```
+
+## BYOLLM (Bring Your Own LLM)
+
+Armazene respostas geradas pelo seu próprio LLM para analytics:
+
+```typescript
+const results = await vg.search('O que é ETP?');
+
+// Gere resposta com seu LLM
+const myResponse = await openai.chat.completions.create({
+  model: 'gpt-4',
+  messages: results.toMessages('O que é ETP?')
+});
+
+// Armazene para analytics
+await vg.storeResponse({
+  query: 'O que é ETP?',
+  answer: myResponse.choices[0].message.content!,
+  provider: 'OpenAI',
+  model: 'gpt-4',
+  chunksUsed: results.hits.length,
+  latencyMs: 1500
+});
+```
+
+## Gestão de Documentos
+
+```typescript
+// Listar documentos disponíveis
+const docs = await vg.listDocuments();
+for (const doc of docs.documents) {
+  console.log(`${doc.tipoDocumento} ${doc.numero}/${doc.ano}: ${doc.chunksCount} chunks`);
+}
+
+// Detalhes de um documento
+const doc = await vg.getDocument('LEI-14133-2021');
+
+// Verificar status de ingestão
+const status = await vg.getIngestStatus('task-id-123');
+
+// Iniciar enriquecimento
+await vg.startEnrichment('LEI-14133-2021');
+
+// Verificar status de enriquecimento
+const enrichStatus = await vg.getEnrichmentStatus('LEI-14133-2021');
+
+// Deletar documento
+await vg.deleteDocument('LEI-14133-2021');
+```
+
+## Logs de Auditoria
+
+```typescript
+// Listar logs de auditoria
+const logs = await vg.getAuditLogs({
+  limit: 50,
+  severity: 'warning',
+  eventType: 'pii_detected'
+});
+
+for (const log of logs.logs) {
+  console.log(`${log.createdAt}: ${log.eventType} - ${log.severity}`);
+}
+
+// Estatísticas de auditoria
+const stats = await vg.getAuditStats(30); // últimos 30 dias
+console.log(`Total eventos: ${stats.totalEvents}`);
+console.log(`Bloqueados: ${stats.blockedCount}`);
+```
+
 ## Tratamento de Erros
 
 ```typescript
@@ -229,7 +375,23 @@ const vg = new VectorGov({
 |--------|-----------|
 | `search(query, options?)` | Busca semântica |
 | `ask(query, options?)` | Pergunta com resposta IA |
+| `askStream(query, options?)` | Pergunta com streaming |
 | `feedback(queryId, like)` | Envia feedback |
+| `storeResponse(options)` | Armazena resposta do seu LLM |
+| `getSystemPrompt(style)` | Obtém system prompt |
+| `availablePrompts` | Lista prompts disponíveis |
+| `toOpenAITool()` | Ferramenta para OpenAI |
+| `toAnthropicTool()` | Ferramenta para Anthropic |
+| `toGoogleTool()` | Ferramenta para Google |
+| `executeToolCall(toolCall)` | Executa chamada de ferramenta |
+| `listDocuments(options?)` | Lista documentos |
+| `getDocument(documentId)` | Detalhes de documento |
+| `getIngestStatus(taskId)` | Status de ingestão |
+| `startEnrichment(documentId)` | Inicia enriquecimento |
+| `getEnrichmentStatus(documentId)` | Status de enriquecimento |
+| `deleteDocument(documentId)` | Remove documento |
+| `getAuditLogs(options?)` | Logs de auditoria |
+| `getAuditStats(days?)` | Estatísticas de auditoria |
 
 ### SearchOptions
 

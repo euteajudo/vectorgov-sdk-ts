@@ -45,6 +45,24 @@ export type {
   AuditLogsResponse,
   AuditStats,
   AuditLogsOptions,
+  // Tipos para BYOLLM (Bring Your Own LLM)
+  StoreResponseOptions,
+  StoreResponseResult,
+  // Tipos para Streaming
+  StreamChunk,
+  // Tipos para Gestão de Documentos
+  DocumentSummary,
+  DocumentsResponse,
+  ListDocumentsOptions,
+  UploadResponse,
+  IngestStatus,
+  EnrichStatus,
+  DeleteResponse,
+  // Tipos para Function Calling
+  OpenAITool,
+  AnthropicTool,
+  GoogleTool,
+  SystemPromptStyle,
 } from './types';
 
 export {
