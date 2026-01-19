@@ -274,11 +274,19 @@ export class VectorGov {
   }
 
   /**
-   * Faz uma pergunta e recebe uma resposta gerada por IA
+   * [INTERNO] Faz uma pergunta e recebe uma resposta gerada por IA
+   *
+   * AVISO: Este metodo e de uso INTERNO da equipe VectorGov.
+   * Requer API key com permissao de admin.
+   *
+   * Para uso externo, utilize o metodo search() e integre com
+   * seu proprio LLM (OpenAI, Gemini, Claude, etc.).
    *
    * @param query - Pergunta
-   * @param options - Opções
-   * @returns Resposta com citações
+   * @param options - Opcoes
+   * @returns Resposta com citacoes
+   * @throws AuthenticationError se a API key nao tiver permissao de admin
+   * @internal
    */
   async ask(query: string, options: AskOptions = {}): Promise<AskResponse> {
     const {
@@ -348,19 +356,28 @@ export class VectorGov {
   }
 
   /**
-   * Faz uma pergunta com resposta em streaming
+   * [INTERNO] Faz uma pergunta com resposta em streaming
    *
-   * @param query - Pergunta do usuário
-   * @param options - Opções de busca
+   * AVISO: Este metodo e de uso INTERNO da equipe VectorGov.
+   * Requer API key com permissao de admin.
+   *
+   * Para uso externo, utilize o metodo search() e integre com
+   * seu proprio LLM (OpenAI, Gemini, Claude, etc.).
+   *
+   * @param query - Pergunta do usuario
+   * @param options - Opcoes de busca
    * @yields StreamChunk com cada parte da resposta
+   * @throws AuthenticationError se a API key nao tiver permissao de admin
+   * @internal
    *
    * @example
    * ```typescript
-   * for await (const chunk of vg.askStream('O que é ETP?')) {
+   * // USO INTERNO APENAS
+   * for await (const chunk of vg.askStream('O que e ETP?')) {
    *   if (chunk.type === 'token') {
    *     process.stdout.write(chunk.content || '');
    *   } else if (chunk.type === 'complete') {
-   *     console.log(`\n\nFontes: ${chunk.citations?.length} citações`);
+   *     console.log(`\n\nFontes: ${chunk.citations?.length} citacoes`);
    *   }
    * }
    * ```
