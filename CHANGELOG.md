@@ -2,6 +2,45 @@
 
 Todas as mudanças notáveis do SDK TypeScript VectorGov estão documentadas aqui.
 
+## [0.7.0] - 2025-01-20
+
+### Adicionado
+
+- **Parâmetros `useHyde` e `useReranker`** - Controle fino sobre as opções de busca
+  - `useHyde`: Habilita HyDE (Hypothetical Document Embeddings) para query expansion via LLM
+  - `useReranker`: Habilita reranking com cross-encoder (BGE-Reranker-v2-m3)
+  - Permite override das configurações padrão do modo de busca
+  - Compatibilidade com SDK Python
+
+```typescript
+// Usar modo fast mas COM reranker (personalizado)
+const results = await vg.search('O que é ETP?', {
+  mode: 'fast',
+  useReranker: true,  // Override: ativa reranker mesmo no modo fast
+});
+
+// Usar modo balanced SEM hyde (padrão do modo)
+const results2 = await vg.search('Critérios de julgamento', {
+  mode: 'balanced',
+  // useHyde não informado = usa padrão do modo (false para balanced)
+});
+
+// Usar modo precise com configuração explícita
+const results3 = await vg.search('Dispensa de licitação', {
+  mode: 'precise',
+  useHyde: true,      // Explícito: gera documentos hipotéticos
+  useReranker: true,  // Explícito: reordena com cross-encoder
+});
+```
+
+**Padrões por modo:**
+
+| Modo | useHyde | useReranker | Latência típica |
+|------|---------|-------------|-----------------|
+| `fast` | false | false | ~2s |
+| `balanced` | false | true | ~5s |
+| `precise` | true | true | ~15s |
+
 ## [0.6.0] - 2025-01-20
 
 ### Adicionado

@@ -145,6 +145,31 @@ const balanced = await vg.search('O que é ETP?', { mode: 'balanced' });
 const precise = await vg.search('O que é ETP?', { mode: 'precise' });
 ```
 
+### Controle Fino com useHyde e useReranker
+
+Você pode fazer override das configurações padrão do modo:
+
+```typescript
+// Modo fast MAS com reranker (personalizado)
+const custom1 = await vg.search('O que é ETP?', {
+  mode: 'fast',
+  useReranker: true,  // Override: ativa reranker mesmo no modo fast
+});
+
+// Modo precise SEM hyde (economiza latência)
+const custom2 = await vg.search('O que é ETP?', {
+  mode: 'precise',
+  useHyde: false,     // Override: desativa HyDE
+  useReranker: true,  // Mantém reranker
+});
+```
+
+| Modo | useHyde (padrão) | useReranker (padrão) | Latência |
+|------|------------------|----------------------|----------|
+| `fast` | false | false | ~2s |
+| `balanced` | false | true | ~5s |
+| `precise` | true | true | ~15s |
+
 > **Importante:** O modo de busca **não afeta** a quantidade de tokens enviados ao seu LLM. Todos os modos retornam o mesmo número de resultados (controlado por `topK`). A diferença está na **qualidade** dos resultados:
 > - **HyDE** (modo `precise`): Gera documentos hipotéticos para melhorar a busca - processamento extra no backend VectorGov
 > - **Reranker** (modos `balanced` e `precise`): Reordena resultados por relevância - processamento extra no backend VectorGov
@@ -409,6 +434,8 @@ const vg = new VectorGov({
 | `mode` | 'fast' \| 'balanced' \| 'precise' | 'balanced' | Modo de busca |
 | `tipoDocumento` | string | - | Filtro por tipo |
 | `ano` | number | - | Filtro por ano |
+| `useHyde` | boolean | (do modo) | Habilita HyDE (query expansion via LLM) |
+| `useReranker` | boolean | (do modo) | Habilita reranking com cross-encoder |
 
 ### SearchResult
 

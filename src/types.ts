@@ -25,6 +25,18 @@ export interface SearchOptions {
   tipoDocumento?: string;
   /** Ano do documento para filtrar */
   ano?: number;
+  /**
+   * Habilita HyDE (Hypothetical Document Embeddings) para query expansion.
+   * Gera documentos hipotéticos via LLM para melhorar recall em queries ambíguas.
+   * Se não informado, usa o padrão do modo: fast=false, balanced=false, precise=true
+   */
+  useHyde?: boolean;
+  /**
+   * Habilita reranking com cross-encoder (BGE-Reranker-v2-m3).
+   * Reordena resultados por relevância usando modelo de reranking.
+   * Se não informado, usa o padrão do modo: fast=false, balanced=true, precise=true
+   */
+  useReranker?: boolean;
 }
 
 /** Hit individual de busca */

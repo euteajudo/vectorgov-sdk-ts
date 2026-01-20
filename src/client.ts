@@ -227,6 +227,8 @@ export class VectorGov {
       mode = 'balanced',
       tipoDocumento,
       ano,
+      useHyde,
+      useReranker,
     } = options;
 
     const response = await this.request<{
@@ -252,6 +254,8 @@ export class VectorGov {
         mode,
         tipo_documento: tipoDocumento,
         ano,
+        use_hyde: useHyde,
+        use_reranker: useReranker,
       }),
     });
 
