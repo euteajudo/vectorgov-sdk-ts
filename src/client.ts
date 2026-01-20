@@ -144,7 +144,7 @@ export class VectorGov {
         ...options,
         headers: {
           'Content-Type': 'application/json',
-          'X-API-Key': this.apiKey,
+          'Authorization': `Bearer ${this.apiKey}`,
           ...options.headers,
         },
         signal: controller.signal,
@@ -153,24 +153,33 @@ export class VectorGov {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({})) as { detail?: string };
+        const errorData = await response.json().catch(() => ({})) as {
+          detail?: string | { error?: string; message?: string };
+        };
+
+        // Extrai mensagem de erro do formato {detail: string} ou {detail: {error, message}}
+        let errorMessage: string;
+        if (typeof errorData.detail === 'string') {
+          errorMessage = errorData.detail;
+        } else if (errorData.detail && typeof errorData.detail === 'object') {
+          errorMessage = errorData.detail.message || errorData.detail.error || 'Unknown error';
+        } else {
+          errorMessage = `Request failed with status ${response.status}`;
+        }
 
         if (response.status === 401) {
-          throw new AuthenticationError(errorData.detail || 'Invalid API key');
+          throw new AuthenticationError(errorMessage);
         }
 
         if (response.status === 429) {
           const retryAfter = response.headers.get('Retry-After');
           throw new RateLimitError(
-            errorData.detail || 'Rate limit exceeded',
+            errorMessage,
             retryAfter ? parseInt(retryAfter, 10) : undefined
           );
         }
 
-        throw new VectorGovError(
-          errorData.detail || `Request failed with status ${response.status}`,
-          response.status
-        );
+        throw new VectorGovError(errorMessage, response.status);
       }
 
       return response.json() as Promise<T>;

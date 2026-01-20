@@ -2,6 +2,13 @@
 
 Todas as mudanças notáveis do SDK TypeScript VectorGov estão documentadas aqui.
 
+## [0.5.1] - 2025-01-20
+
+### Corrigido
+
+- **Header de autenticação**: Alterado de `X-API-Key` para `Authorization: Bearer` para compatibilidade com a API
+- **Tratamento de erros**: Corrigido parsing de mensagens de erro da API (suporta formato `{detail: {error, message}}`)
+
 ## [0.5.0] - 2025-01-19
 
 ### Adicionado
