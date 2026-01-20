@@ -95,42 +95,6 @@ export interface Citation {
   article?: string;
 }
 
-/** Metadados da resposta de pergunta */
-export interface AskMetadata {
-  /** Modelo usado */
-  model: string;
-  /** Tempo total em ms */
-  latencyMs: number;
-  /** Tempo de busca em ms */
-  retrievalMs?: number;
-  /** Tempo de geração em ms */
-  generationMs?: number;
-  /** Chunks usados */
-  chunksUsed: number;
-  /** Tokens usados */
-  tokens?: number;
-  /** Hash da query (para feedback) */
-  queryHash?: string;
-}
-
-/** Resposta de uma pergunta */
-export interface AskResponse {
-  /** Resposta gerada */
-  answer: string;
-  /** Citações */
-  citations: Citation[];
-  /** Confiança (0-1) */
-  confidence: number;
-  /** Metadados */
-  metadata: AskMetadata;
-}
-
-/** Opções para perguntar */
-export interface AskOptions extends SearchOptions {
-  /** Usar cache semântico */
-  useCache?: boolean;
-}
-
 /** Resposta de feedback */
 export interface FeedbackResponse {
   success: boolean;
@@ -285,30 +249,6 @@ export interface StoreResponseResult {
 }
 
 // =============================================================================
-// TIPOS PARA STREAMING
-// =============================================================================
-
-/** Chunk de resposta em streaming */
-export interface StreamChunk {
-  /** Tipo do chunk (start, token, complete, error) */
-  type: 'start' | 'token' | 'complete' | 'error';
-  /** Conteúdo do chunk (token ou mensagem) */
-  content?: string;
-  /** Query original (em start) */
-  query?: string;
-  /** Chunks usados (em start) */
-  chunks?: number;
-  /** Tempo em ms (em complete) */
-  timeMs?: number;
-  /** Citações (em complete) */
-  citations?: Citation[];
-  /** Hash da query (em complete) */
-  queryHash?: string;
-  /** Mensagem de erro (em error) */
-  message?: string;
-}
-
-// =============================================================================
 // TIPOS PARA GESTÃO DE DOCUMENTOS
 // =============================================================================
 
@@ -448,3 +388,33 @@ export interface GoogleTool {
 
 /** Estilos de system prompt disponíveis */
 export type SystemPromptStyle = 'default' | 'concise' | 'detailed' | 'chatbot';
+
+// =============================================================================
+// TIPOS PARA CONTAGEM DE TOKENS
+// =============================================================================
+
+/** Estatísticas de tokens para planejamento de contexto LLM */
+export interface TokenStats {
+  /** Tokens do contexto (hits formatados) */
+  contextTokens: number;
+  /** Tokens do system prompt */
+  systemTokens: number;
+  /** Tokens da query do usuário */
+  queryTokens: number;
+  /** Total de tokens (context + system + query) */
+  totalTokens: number;
+  /** Quantidade de hits no contexto */
+  hitsCount: number;
+  /** Número total de caracteres */
+  charCount: number;
+  /** Encoding utilizado (cl100k_base compatível com GPT-4/Claude) */
+  encoding: string;
+}
+
+/** Opções para estimativa de tokens */
+export interface EstimateTokensOptions {
+  /** System prompt customizado (opcional) */
+  systemPrompt?: string;
+  /** Query do usuário (obrigatório quando content é string) */
+  query?: string;
+}

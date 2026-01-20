@@ -1,6 +1,6 @@
 {
   "name": "vectorgov",
-  "version": "0.3.1",
+  "version": "0.5.0",
   "description": "SDK TypeScript para a API VectorGov - Busca semântica em legislação brasileira",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

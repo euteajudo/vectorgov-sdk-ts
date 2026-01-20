@@ -34,9 +34,6 @@ export type {
   SearchHit,
   SearchMetadata,
   SearchMode,
-  AskOptions,
-  AskResponse,
-  AskMetadata,
   Citation,
   ChatMessage,
   FeedbackResponse,
@@ -48,8 +45,6 @@ export type {
   // Tipos para BYOLLM (Bring Your Own LLM)
   StoreResponseOptions,
   StoreResponseResult,
-  // Tipos para Streaming
-  StreamChunk,
   // Tipos para Gestão de Documentos
   DocumentSummary,
   DocumentsResponse,
@@ -63,6 +58,9 @@ export type {
   AnthropicTool,
   GoogleTool,
   SystemPromptStyle,
+  // Tipos para Contagem de Tokens
+  TokenStats,
+  EstimateTokensOptions,
 } from './types';
 
 export {

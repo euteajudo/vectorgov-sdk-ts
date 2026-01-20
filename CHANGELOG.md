@@ -1,0 +1,97 @@
+# Changelog
+
+Todas as mudanças notáveis do SDK TypeScript VectorGov estão documentadas aqui.
+
+## [0.5.0] - 2025-01-19
+
+### Adicionado
+
+- **Método `estimateTokens()`** - Estima a quantidade de tokens que serão usados com um LLM
+  - Aceita `SearchResult` ou string de contexto
+  - Retorna `TokenStats` com contagem detalhada (context, system, query, total)
+  - Usa encoding `cl100k_base` (compatível com GPT-4 e Claude)
+  - Útil para planejar contexto e calcular custos
+
+```typescript
+const results = await vg.search('O que é ETP?');
+const stats = await vg.estimateTokens(results);
+
+console.log(`Tokens de contexto: ${stats.contextTokens}`);
+console.log(`Tokens de sistema: ${stats.systemTokens}`);
+console.log(`Total: ${stats.totalTokens}`);
+
+// Com system prompt customizado
+const stats2 = await vg.estimateTokens(results, {
+  systemPrompt: 'Você é um especialista...'
+});
+```
+
+- Novos tipos: `TokenStats`, `EstimateTokensOptions`
+
+## [0.4.0] - 2025-01-19
+
+### Removido
+
+- **Métodos `ask()` e `askStream()` removidos** - Os endpoints `/sdk/ask` e `/sdk/ask/stream` agora são restritos apenas para administradores.
+
+### Migração
+
+Os métodos `ask()` e `askStream()` foram removidos. Use `search()` + seu próprio LLM:
+
+```typescript
+// ANTES (v0.3.x) - ask()
+const response = await vg.ask('O que é ETP?');
+console.log(response.answer);
+
+// DEPOIS - Use seu próprio LLM
+import OpenAI from 'openai';
+
+const vg = new VectorGov({ apiKey: 'vg_xxx' });
+const openai = new OpenAI();
+
+const results = await vg.search('O que é ETP?');
+const response = await openai.chat.completions.create({
+  model: 'gpt-4o',
+  messages: results.toMessages('O que é ETP?')
+});
+console.log(response.choices[0].message.content);
+```
+
+Opções de LLM:
+- **OpenAI**: `openai` (GPT-4, GPT-4o, etc.)
+- **Anthropic**: `@anthropic-ai/sdk` (Claude)
+- **Google**: `@google/generative-ai` (Gemini)
+- **Ollama**: Para modelos locais
+
+## [0.3.1] - 2025-01-17
+
+### Adicionado
+
+- Métodos de auditoria: `getAuditLogs()`, `getAuditStats()`, `getAuditEventTypes()`
+- Tipos de auditoria: `AuditLog`, `AuditLogsResponse`, `AuditStats`
+
+## [0.3.0] - 2025-01-15
+
+### Adicionado
+
+- Function Calling: `toOpenAITool()`, `toAnthropicTool()`, `toGoogleTool()`, `executeToolCall()`
+- BYOLLM: `storeResponse()` para armazenar respostas de LLMs externos
+- System Prompts: `getSystemPrompt()`, `availablePrompts`
+- Gestão de documentos: `listDocuments()`, `getDocument()`, `deleteDocument()`
+- Status de ingestão/enriquecimento: `getIngestStatus()`, `startEnrichment()`, `getEnrichmentStatus()`
+
+## [0.2.0] - 2025-01-10
+
+### Adicionado
+
+- Método `feedback()` para like/dislike
+- Modos de busca: `fast`, `balanced`, `precise`
+- Filtros por `tipoDocumento` e `ano`
+
+## [0.1.0] - 2025-01-05
+
+### Adicionado
+
+- Cliente `VectorGov` com método `search()`
+- Helpers `toMessages()` e `toContext()` no SearchResult
+- Tratamento de erros: `VectorGovError`, `AuthenticationError`, `RateLimitError`

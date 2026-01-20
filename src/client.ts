@@ -8,8 +8,6 @@ import {
   SearchResult,
   SearchHit,
   SearchMetadata,
-  AskOptions,
-  AskResponse,
   FeedbackResponse,
   ChatMessage,
   VectorGovError,
@@ -22,7 +20,6 @@ import {
   // Novos tipos
   StoreResponseOptions,
   StoreResponseResult,
-  StreamChunk,
   Citation,
   DocumentSummary,
   DocumentsResponse,
@@ -35,6 +32,9 @@ import {
   AnthropicTool,
   GoogleTool,
   SystemPromptStyle,
+  // Tokens
+  TokenStats,
+  EstimateTokensOptions,
 } from './types';
 
 const DEFAULT_BASE_URL = 'https://vectorgov.io/api/v1';
@@ -271,188 +271,6 @@ export class VectorGov {
       toMessages: (q: string) => this.hitsToMessages(hits, q),
       toContext: () => this.hitsToContext(hits),
     };
-  }
-
-  /**
-   * [INTERNO] Faz uma pergunta e recebe uma resposta gerada por IA
-   *
-   * AVISO: Este metodo e de uso INTERNO da equipe VectorGov.
-   * Requer API key com permissao de admin.
-   *
-   * Para uso externo, utilize o metodo search() e integre com
-   * seu proprio LLM (OpenAI, Gemini, Claude, etc.).
-   *
-   * @param query - Pergunta
-   * @param options - Opcoes
-   * @returns Resposta com citacoes
-   * @throws AuthenticationError se a API key nao tiver permissao de admin
-   * @internal
-   */
-  async ask(query: string, options: AskOptions = {}): Promise<AskResponse> {
-    const {
-      topK = 5,
-      mode = 'balanced',
-      useCache = true,
-      tipoDocumento,
-      ano,
-    } = options;
-
-    const response = await this.request<{
-      success: boolean;
-      data: {
-        answer: string;
-        confidence: number;
-        citations: Array<{
-          text: string;
-          short: string;
-          document_type?: string;
-          document_number?: string;
-          year?: number;
-          article?: string;
-        }>;
-      };
-      metadata: {
-        model: string;
-        latency_ms: number;
-        retrieval_ms?: number;
-        generation_ms?: number;
-        chunks_used: number;
-        tokens?: number;
-        query_hash?: string;
-      };
-    }>('/sdk/ask', {
-      method: 'POST',
-      body: JSON.stringify({
-        query,
-        top_k: topK,
-        mode,
-        use_cache: useCache,
-        tipo_documento: tipoDocumento,
-        ano,
-      }),
-    });
-
-    return {
-      answer: response.data.answer,
-      citations: response.data.citations.map(c => ({
-        text: c.text,
-        short: c.short,
-        documentType: c.document_type,
-        documentNumber: c.document_number,
-        year: c.year,
-        article: c.article,
-      })),
-      confidence: response.data.confidence,
-      metadata: {
-        model: response.metadata.model,
-        latencyMs: response.metadata.latency_ms,
-        retrievalMs: response.metadata.retrieval_ms,
-        generationMs: response.metadata.generation_ms,
-        chunksUsed: response.metadata.chunks_used,
-        tokens: response.metadata.tokens,
-        queryHash: response.metadata.query_hash,
-      },
-    };
-  }
-
-  /**
-   * [INTERNO] Faz uma pergunta com resposta em streaming
-   *
-   * AVISO: Este metodo e de uso INTERNO da equipe VectorGov.
-   * Requer API key com permissao de admin.
-   *
-   * Para uso externo, utilize o metodo search() e integre com
-   * seu proprio LLM (OpenAI, Gemini, Claude, etc.).
-   *
-   * @param query - Pergunta do usuario
-   * @param options - Opcoes de busca
-   * @yields StreamChunk com cada parte da resposta
-   * @throws AuthenticationError se a API key nao tiver permissao de admin
-   * @internal
-   *
-   * @example
-   * ```typescript
-   * // USO INTERNO APENAS
-   * for await (const chunk of vg.askStream('O que e ETP?')) {
-   *   if (chunk.type === 'token') {
-   *     process.stdout.write(chunk.content || '');
-   *   } else if (chunk.type === 'complete') {
-   *     console.log(`\n\nFontes: ${chunk.citations?.length} citacoes`);
-   *   }
-   * }
-   * ```
-   */
-  async *askStream(
-    query: string,
-    options: SearchOptions = {}
-  ): AsyncGenerator<StreamChunk> {
-    const { topK = 5, mode = 'balanced' } = options;
-
-    const url = `${this.baseUrl}/sdk/ask/stream`;
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key': this.apiKey,
-      },
-      body: JSON.stringify({
-        query,
-        top_k: topK,
-        mode,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new VectorGovError(`Stream request failed: ${response.status}`);
-    }
-
-    if (!response.body) {
-      throw new VectorGovError('No response body for streaming');
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') return;
-
-            try {
-              const event = JSON.parse(data);
-              const chunk: StreamChunk = {
-                type: event.type || 'token',
-                content: event.content,
-                query: event.query,
-                chunks: event.chunks,
-                timeMs: event.time_ms,
-                citations: event.citations,
-                queryHash: event.query_hash,
-                message: event.message,
-              };
-              yield chunk;
-
-              if (event.type === 'error') return;
-            } catch {
-              // Ignore parse errors
-            }
-          }
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
   }
 
   /**
@@ -1069,6 +887,90 @@ export class VectorGov {
     }>('/sdk/audit/event-types');
 
     return response.event_types;
+  }
+
+  // ===========================================================================
+  // CONTAGEM DE TOKENS
+  // ===========================================================================
+
+  /**
+   * Estima a quantidade de tokens que serão usados com um LLM
+   *
+   * Use para planejar o contexto antes de enviar para seu LLM:
+   * - Verificar se cabe no limite do modelo
+   * - Calcular custos estimados
+   * - Ajustar top_k se necessário
+   *
+   * @param content - SearchResult ou string de contexto
+   * @param options - Opções (systemPrompt customizado, query)
+   * @returns Estatísticas de tokens
+   *
+   * @example
+   * ```typescript
+   * // Com SearchResult
+   * const results = await vg.search('O que é ETP?');
+   * const stats = await vg.estimateTokens(results);
+   * console.log(`Total de tokens: ${stats.totalTokens}`);
+   *
+   * if (stats.totalTokens > 4000) {
+   *   // Reduzir contexto
+   *   const smaller = await vg.search('O que é ETP?', { topK: 3 });
+   * }
+   *
+   * // Com string direta
+   * const stats2 = await vg.estimateTokens('Texto de contexto...');
+   *
+   * // Com system prompt customizado
+   * const stats3 = await vg.estimateTokens(results, {
+   *   systemPrompt: 'Você é um especialista jurídico...'
+   * });
+   * ```
+   */
+  async estimateTokens(
+    content: SearchResult | string,
+    options: EstimateTokensOptions = {}
+  ): Promise<TokenStats> {
+    // Extrai contexto e query
+    let context: string;
+    let query = options.query || '';
+    let hitsCount = 0;
+
+    if (typeof content === 'string') {
+      context = content;
+    } else {
+      // É SearchResult - usa toContext()
+      context = content.toContext();
+      hitsCount = content.hits.length;
+    }
+
+    const systemPrompt = options.systemPrompt || SYSTEM_PROMPTS.default;
+
+    const response = await this.request<{
+      success: boolean;
+      context_tokens: number;
+      system_tokens: number;
+      query_tokens: number;
+      total_tokens: number;
+      char_count: number;
+      encoding: string;
+    }>('/sdk/tokens', {
+      method: 'POST',
+      body: JSON.stringify({
+        context,
+        query,
+        system_prompt: systemPrompt,
+      }),
+    });
+
+    return {
+      contextTokens: response.context_tokens,
+      systemTokens: response.system_tokens,
+      queryTokens: response.query_tokens,
+      totalTokens: response.total_tokens,
+      hitsCount,
+      charCount: response.char_count,
+      encoding: response.encoding,
+    };
   }
 
   // ===========================================================================

@@ -145,6 +145,42 @@ const balanced = await vg.search('O que é ETP?', { mode: 'balanced' });
 const precise = await vg.search('O que é ETP?', { mode: 'precise' });
 ```
 
+> **Importante:** O modo de busca **não afeta** a quantidade de tokens enviados ao seu LLM. Todos os modos retornam o mesmo número de resultados (controlado por `topK`). A diferença está na **qualidade** dos resultados:
+> - **HyDE** (modo `precise`): Gera documentos hipotéticos para melhorar a busca - processamento extra no backend VectorGov
+> - **Reranker** (modos `balanced` e `precise`): Reordena resultados por relevância - processamento extra no backend VectorGov
+>
+> Ou seja: você recebe resultados **mais relevantes**, não **mais resultados**.
+
+## Estimativa de Tokens
+
+Planeje o uso de contexto com estimativa de tokens antes de enviar para seu LLM:
+
+```typescript
+const results = await vg.search('O que é ETP?', { topK: 5 });
+
+// Estima tokens do contexto
+const stats = await vg.estimateTokens(results);
+
+console.log(`Tokens de contexto: ${stats.contextTokens}`);
+console.log(`Tokens de sistema: ${stats.systemTokens}`);
+console.log(`Total: ${stats.totalTokens}`);
+console.log(`Caracteres: ${stats.charCount}`);
+console.log(`Encoding: ${stats.encoding}`);
+
+// Verificar se cabe no limite do modelo
+if (stats.totalTokens > 4000) {
+  // Reduzir contexto
+  const smaller = await vg.search('O que é ETP?', { topK: 3 });
+  const smallerStats = await vg.estimateTokens(smaller);
+  console.log(`Novo total: ${smallerStats.totalTokens}`);
+}
+
+// Com system prompt customizado
+const customStats = await vg.estimateTokens(results, {
+  systemPrompt: 'Você é um especialista jurídico...'
+});
+```
+
 ## Filtros
 
 ```typescript
@@ -153,20 +189,6 @@ const results = await vg.search('dispensa de licitação', {
   tipoDocumento: 'lei',
   ano: 2021
 });
-```
-
-## Perguntas com Resposta
-
-```typescript
-// Usa o LLM do VectorGov para gerar resposta
-const response = await vg.ask('O que é ETP?');
-
-console.log(response.answer);
-console.log(`Confiança: ${(response.confidence * 100).toFixed(1)}%`);
-
-for (const citation of response.citations) {
-  console.log(`  - ${citation.short}`);
-}
 ```
 
 ## Feedback
@@ -179,19 +201,6 @@ await vg.feedback(results.metadata.queryId, true);
 
 // Ou negativo
 await vg.feedback(results.metadata.queryId, false);
-```
-
-## Streaming
-
-```typescript
-// Resposta em tempo real com Server-Sent Events
-for await (const chunk of vg.askStream('O que é ETP?')) {
-  if (chunk.type === 'token') {
-    process.stdout.write(chunk.content || '');
-  } else if (chunk.type === 'complete') {
-    console.log('\n\nCitações:', chunk.citations);
-  }
-}
 ```
 
 ## System Prompts
@@ -374,9 +383,8 @@ const vg = new VectorGov({
 | Método | Descrição |
 |--------|-----------|
 | `search(query, options?)` | Busca semântica |
-| `ask(query, options?)` | Pergunta com resposta IA |
-| `askStream(query, options?)` | Pergunta com streaming |
 | `feedback(queryId, like)` | Envia feedback |
+| `estimateTokens(content, options?)` | Estima tokens para LLM |
 | `storeResponse(options)` | Armazena resposta do seu LLM |
 | `getSystemPrompt(style)` | Obtém system prompt |
 | `availablePrompts` | Lista prompts disponíveis |
