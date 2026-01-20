@@ -25,6 +25,8 @@ import {
   DocumentsResponse,
   ListDocumentsOptions,
   UploadResponse,
+  UploadPdfOptions,
+  TipoDocumento,
   IngestStatus,
   EnrichStatus,
   DeleteResponse,
@@ -580,6 +582,173 @@ export class VectorGov {
   // ===========================================================================
   // GESTÃO DE DOCUMENTOS
   // ===========================================================================
+
+  /**
+   * Faz upload de um PDF para ingestão (APENAS ADMINS)
+   *
+   * Este método requer permissões de administrador. Usuários comuns
+   * receberão erro 403 Forbidden.
+   *
+   * @param file - Arquivo PDF (File ou Blob)
+   * @param filename - Nome do arquivo (deve terminar com .pdf)
+   * @param options - Opções de upload (tipo, número, ano)
+   * @returns Resposta com taskId para acompanhar a ingestão
+   *
+   * @example
+   * ```typescript
+   * // No browser (com input file)
+   * const fileInput = document.querySelector('input[type="file"]');
+   * const file = fileInput.files[0];
+   *
+   * const result = await vg.uploadPdf(file, file.name, {
+   *   tipoDocumento: 'LEI',
+   *   numero: '14133',
+   *   ano: 2021,
+   * });
+   *
+   * console.log(`Task ID: ${result.taskId}`);
+   *
+   * // Acompanhar progresso
+   * const status = await vg.getIngestStatus(result.taskId);
+   * ```
+   *
+   * @example
+   * ```typescript
+   * // No Node.js (com fs)
+   * import { readFileSync } from 'fs';
+   *
+   * const buffer = readFileSync('documento.pdf');
+   * const blob = new Blob([buffer], { type: 'application/pdf' });
+   *
+   * const result = await vg.uploadPdf(blob, 'documento.pdf', {
+   *   tipoDocumento: 'IN',
+   *   numero: '65',
+   *   ano: 2021,
+   * });
+   * ```
+   */
+  async uploadPdf(
+    file: File | Blob,
+    filename: string,
+    options: UploadPdfOptions
+  ): Promise<UploadResponse> {
+    // Validações
+    if (!file) {
+      throw new VectorGovError('Arquivo é obrigatório');
+    }
+
+    if (!filename || !filename.trim()) {
+      throw new VectorGovError('Nome do arquivo é obrigatório');
+    }
+
+    if (!filename.toLowerCase().endsWith('.pdf')) {
+      throw new VectorGovError('Apenas arquivos PDF são aceitos');
+    }
+
+    const validTypes: TipoDocumento[] = ['LEI', 'DECRETO', 'IN', 'PORTARIA', 'RESOLUCAO'];
+    const tipoUpper = options.tipoDocumento.toUpperCase() as TipoDocumento;
+    if (!validTypes.includes(tipoUpper)) {
+      throw new VectorGovError(
+        `Tipo de documento inválido: ${options.tipoDocumento}. Válidos: ${validTypes.join(', ')}`
+      );
+    }
+
+    if (!options.numero || !options.numero.trim()) {
+      throw new VectorGovError('Número do documento é obrigatório');
+    }
+
+    if (options.ano < 1900 || options.ano > 2100) {
+      throw new VectorGovError('Ano deve estar entre 1900 e 2100');
+    }
+
+    // Prepara FormData
+    const formData = new FormData();
+    formData.append('file', file, filename);
+    formData.append('tipo_documento', tipoUpper);
+    formData.append('numero', options.numero.trim());
+    formData.append('ano', options.ano.toString());
+
+    // Faz requisição multipart
+    const url = `${this.baseUrl}/sdk/documents/upload`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout * 2); // Timeout maior para upload
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          // Não definir Content-Type - o browser define automaticamente com boundary
+        },
+        body: formData,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({})) as {
+          detail?: string | { error?: string; message?: string };
+        };
+
+        let errorMessage: string;
+        if (typeof errorData.detail === 'string') {
+          errorMessage = errorData.detail;
+        } else if (errorData.detail && typeof errorData.detail === 'object') {
+          errorMessage = errorData.detail.message || errorData.detail.error || 'Unknown error';
+        } else {
+          errorMessage = `Upload failed with status ${response.status}`;
+        }
+
+        if (response.status === 401) {
+          throw new AuthenticationError(errorMessage);
+        }
+
+        if (response.status === 403) {
+          throw new VectorGovError('Acesso negado. Este método requer permissões de administrador.', 403);
+        }
+
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After');
+          throw new RateLimitError(
+            errorMessage,
+            retryAfter ? parseInt(retryAfter, 10) : undefined
+          );
+        }
+
+        throw new VectorGovError(errorMessage, response.status);
+      }
+
+      const data = await response.json() as {
+        success: boolean;
+        message: string;
+        document_id: string;
+        task_id: string;
+      };
+
+      return {
+        success: data.success,
+        message: data.message,
+        documentId: data.document_id,
+        taskId: data.task_id,
+      };
+    } catch (error) {
+      clearTimeout(timeoutId);
+
+      if (error instanceof VectorGovError) {
+        throw error;
+      }
+
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new VectorGovError('Upload timeout', 408, 'TIMEOUT');
+      }
+
+      throw new VectorGovError(
+        error instanceof Error ? error.message : 'Unknown error'
+      );
+    }
+  }
 
   /**
    * Lista os documentos disponíveis

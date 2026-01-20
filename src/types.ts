@@ -292,6 +292,19 @@ export interface ListDocumentsOptions {
   limit?: number;
 }
 
+/** Tipos de documento válidos para upload */
+export type TipoDocumento = 'LEI' | 'DECRETO' | 'IN' | 'PORTARIA' | 'RESOLUCAO';
+
+/** Opções para upload de PDF (apenas admins) */
+export interface UploadPdfOptions {
+  /** Tipo do documento */
+  tipoDocumento: TipoDocumento;
+  /** Número do documento */
+  numero: string;
+  /** Ano do documento (1900-2100) */
+  ano: number;
+}
+
 /** Resposta de upload */
 export interface UploadResponse {
   /** Se foi iniciado com sucesso */

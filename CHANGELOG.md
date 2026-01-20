@@ -2,6 +2,45 @@
 
 Todas as mudanças notáveis do SDK TypeScript VectorGov estão documentadas aqui.
 
+## [0.6.0] - 2025-01-20
+
+### Adicionado
+
+- **Método `uploadPdf()`** - Upload de PDF para ingestão (apenas admins)
+  - Aceita `File` ou `Blob` para compatibilidade com browser e Node.js
+  - Validação de tipo de documento (LEI, DECRETO, IN, PORTARIA, RESOLUCAO)
+  - Retorna `UploadResponse` com `taskId` para acompanhar a ingestão
+  - Timeout aumentado para uploads maiores
+
+```typescript
+// No browser
+const fileInput = document.querySelector('input[type="file"]');
+const file = fileInput.files[0];
+
+const result = await vg.uploadPdf(file, file.name, {
+  tipoDocumento: 'LEI',
+  numero: '14133',
+  ano: 2021,
+});
+
+// Acompanhar progresso
+const status = await vg.getIngestStatus(result.taskId);
+
+// No Node.js
+import { readFileSync } from 'fs';
+
+const buffer = readFileSync('documento.pdf');
+const blob = new Blob([buffer], { type: 'application/pdf' });
+
+const result = await vg.uploadPdf(blob, 'documento.pdf', {
+  tipoDocumento: 'IN',
+  numero: '65',
+  ano: 2021,
+});
+```
+
+- Novos tipos: `UploadPdfOptions`, `TipoDocumento`
+
 ## [0.5.1] - 2025-01-20
 
 ### Corrigido

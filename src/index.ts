@@ -50,6 +50,8 @@ export type {
   DocumentsResponse,
   ListDocumentsOptions,
   UploadResponse,
+  UploadPdfOptions,
+  TipoDocumento,
   IngestStatus,
   EnrichStatus,
   DeleteResponse,
