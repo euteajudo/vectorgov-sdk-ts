@@ -2,6 +2,52 @@
 
 Todas as mudanças notáveis do SDK TypeScript VectorGov estão documentadas aqui.
 
+O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
+e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
+
+## [0.8.0] - 2025-01-21
+
+### Adicionado
+
+- **AlertManager**: Sistema de alertas em tempo real para eventos de segurança
+  - Suporte a webhooks Slack, Discord e genéricos
+  - Métodos de conveniência: `alertPiiDetected()`, `alertInjectionDetected()`, `alertCircuitBreakerOpen()`, `alertRateLimitExceeded()`, `alertSecurityIncident()`, `alertApiError()`
+  - Sistema de cooldown para evitar spam de alertas (60s padrão)
+  - Formatação automática de payloads para Slack (attachments) e Discord (embeds)
+  - Severidades: `info`, `warning`, `error`, `critical`
+  - Canais de envio: `log`, `webhook`
+  - Suporte a handler de log customizado via `setLogHandler()`
+
+```typescript
+import { AlertManager } from 'vectorgov';
+
+const alerts = new AlertManager({
+  webhookUrl: 'https://hooks.slack.com/services/xxx',
+  webhookEnabled: true,
+  webhookType: 'slack',
+});
+
+// Métodos de conveniência
+await alerts.alertPiiDetected(['cpf', 'email'], 'masked');
+await alerts.alertInjectionDetected('prompt_injection', 0.95, 'blocked');
+await alerts.alertCircuitBreakerOpen('milvus', 5);
+await alerts.alertRateLimitExceeded('vg_abc123...', 100, 150);
+await alerts.alertSecurityIncident('unauthorized_access', 'Tentativa de acesso não autorizado');
+await alerts.alertApiError('/sdk/search', 'Timeout', 504);
+```
+
+### Tipos Adicionados
+
+- `AlertSeverity` - Níveis de severidade dos alertas
+- `AlertChannel` - Canais de envio (log, webhook)
+- `WebhookType` - Tipos de webhook (slack, discord, generic)
+- `AlertConfig` - Configuração do AlertManager
+- `Alert` - Estrutura de um alerta
+- `SendAlertOptions` - Opções para envio de alertas
+- `AlertResult` - Resultado do envio
+- `SlackPayload` - Payload formatado para Slack
+- `DiscordPayload` - Payload formatado para Discord
+
 ## [0.7.0] - 2025-01-20
 
 ### Adicionado

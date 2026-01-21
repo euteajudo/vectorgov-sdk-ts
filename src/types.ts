@@ -443,3 +443,110 @@ export interface EstimateTokensOptions {
   /** Query do usuário (obrigatório quando content é string) */
   query?: string;
 }
+
+// =============================================================================
+// TIPOS PARA ALERTAS E WEBHOOKS
+// =============================================================================
+
+/** Severidade do alerta */
+export type AlertSeverity = 'info' | 'warning' | 'error' | 'critical';
+
+/** Canal de envio de alertas */
+export type AlertChannel = 'log' | 'webhook';
+
+/** Tipo de webhook */
+export type WebhookType = 'slack' | 'discord' | 'generic';
+
+/** Configuração do Alert Manager */
+export interface AlertConfig {
+  /** Severidade mínima para enviar alertas (padrão: 'warning') */
+  minSeverity?: AlertSeverity;
+  /** URL do webhook (Slack, Discord, etc) */
+  webhookUrl?: string;
+  /** Se o webhook está habilitado */
+  webhookEnabled?: boolean;
+  /** Tipo de webhook (slack, discord, generic) */
+  webhookType?: WebhookType;
+  /** Segundos entre alertas do mesmo tipo (padrão: 60) */
+  cooldownSeconds?: number;
+  /** Canais habilitados (padrão: ['log']) */
+  channels?: AlertChannel[];
+}
+
+/** Estrutura de um alerta */
+export interface Alert {
+  /** ID único do alerta */
+  alertId: string;
+  /** Título do alerta */
+  title: string;
+  /** Mensagem detalhada */
+  message: string;
+  /** Severidade do alerta */
+  severity: AlertSeverity;
+  /** Módulo que gerou o alerta */
+  source: string;
+  /** Detalhes adicionais */
+  details: Record<string, unknown>;
+  /** Timestamp do alerta (ISO 8601) */
+  timestamp: string;
+}
+
+/** Opções para envio de alerta */
+export interface SendAlertOptions {
+  /** Título do alerta */
+  title: string;
+  /** Mensagem detalhada */
+  message: string;
+  /** Severidade do alerta (padrão: 'warning') */
+  severity?: AlertSeverity;
+  /** Módulo que gerou o alerta */
+  source?: string;
+  /** Detalhes adicionais */
+  details?: Record<string, unknown>;
+  /** Se deve ignorar cooldown */
+  bypassCooldown?: boolean;
+}
+
+/** Resultado do envio de alerta */
+export interface AlertResult {
+  /** Se o alerta foi enviado */
+  sent: boolean;
+  /** ID do alerta (se enviado) */
+  alertId?: string;
+  /** Canais que receberam o alerta */
+  channels: AlertChannel[];
+  /** Mensagem de erro (se houver) */
+  error?: string;
+}
+
+/** Payload para Slack webhook */
+export interface SlackPayload {
+  attachments: Array<{
+    color: string;
+    title: string;
+    text: string;
+    fields: Array<{
+      title: string;
+      value: string;
+      short: boolean;
+    }>;
+    footer: string;
+    ts: number;
+  }>;
+}
+
+/** Payload para Discord webhook */
+export interface DiscordPayload {
+  embeds: Array<{
+    title: string;
+    description: string;
+    color: number;
+    fields: Array<{
+      name: string;
+      value: string;
+      inline: boolean;
+    }>;
+    footer: { text: string };
+    timestamp: string;
+  }>;
+}

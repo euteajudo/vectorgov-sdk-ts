@@ -16,6 +16,10 @@ SDK oficial para a API VectorGov - Busca semântica em legislação brasileira.
 
 ## Instalação
 
+## Requisitos
+
+- Node.js **>= 18.0.0**
+
 ```bash
 npm install vectorgov
 # ou
@@ -64,6 +68,97 @@ for (const hit of results.hits) {
 ```
 
 ## Integração com LLMs
+
+### LangChain.js (TypeScript) - RAG com fontes
+
+Use o VectorGov como **retriever** no LangChain.js. O fluxo recomendado e:
+
+- `vg.search()` para buscar trechos com fontes
+- o LLM responde **apenas** com base nesses trechos
+
+Instale:
+
+```bash
+npm install vectorgov langchain @langchain/openai
+```
+
+Exemplo completo:
+
+```typescript
+import { VectorGov } from "vectorgov";
+import { Document } from "langchain/document";
+import { BaseRetriever } from "@langchain/core/retrievers";
+import { ChatOpenAI } from "@langchain/openai";
+import { ChatPromptTemplate } from "@langchain/core/prompts";
+import { createStuffDocumentsChain } from "langchain/chains/combine_documents";
+
+class VectorGovRetriever extends BaseRetriever {
+  lc_namespace = ["vectorgov", "retriever"] as const;
+
+  constructor(private vg: VectorGov) {
+    super();
+  }
+
+  async _getRelevantDocuments(query: string): Promise<Document[]> {
+    const results = await this.vg.search(query, { topK: 5, mode: "balanced" });
+
+    return results.hits.map(
+      (h) =>
+        new Document({
+          pageContent: h.text,
+          metadata: {
+            source: h.source,
+            score: h.score,
+          },
+        })
+    );
+  }
+}
+
+async function main() {
+  const vg = new VectorGov({ apiKey: process.env.VECTORGOV_API_KEY! });
+  const retriever = new VectorGovRetriever(vg);
+
+  const llm = new ChatOpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+    model: "gpt-4o-mini",
+    temperature: 0,
+  });
+
+  const prompt = ChatPromptTemplate.fromMessages([
+    [
+      "system",
+      [
+        "Voce e um assistente juridico. Responda APENAS com base nos trechos fornecidos.",
+        "Se nao estiver nos trechos, diga que nao encontrou.",
+        "Sempre cite as fontes em uma lista ao final.",
+      ].join("\\n"),
+    ],
+    ["human", "Pergunta: {question}\\n\\nTrechos:\\n{context}"],
+  ]);
+
+  const chain = await createStuffDocumentsChain({ llm, prompt });
+
+  const question = "Quando o ETP pode ser dispensado?";
+  const docs = await retriever.getRelevantDocuments(question);
+
+  const answer = await chain.invoke({
+    question,
+    context: docs
+      .map((d) => `${d.pageContent}\\n[Fonte: ${String(d.metadata.source)}]`)
+      .join("\\n\\n---\\n\\n"),
+  });
+
+  console.log(String(answer));
+  console.log("\\nFontes:");
+  for (const d of docs) console.log("-", d.metadata.source);
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
+```
 
 ### OpenAI
 
@@ -359,6 +454,114 @@ for (const log of logs.logs) {
 const stats = await vg.getAuditStats(30); // últimos 30 dias
 console.log(`Total eventos: ${stats.totalEvents}`);
 console.log(`Bloqueados: ${stats.blockedCount}`);
+```
+
+## Alertas e Webhooks (Slack/Discord)
+
+O SDK inclui um sistema de alertas em tempo real para eventos de segurança.
+Suporta envio para Slack, Discord e webhooks genéricos.
+
+### Configuração
+
+```typescript
+import { AlertManager } from 'vectorgov';
+
+const alerts = new AlertManager({
+  webhookUrl: 'https://hooks.slack.com/services/xxx/yyy/zzz',
+  webhookEnabled: true,
+  webhookType: 'slack', // 'slack' | 'discord' | 'generic'
+  minSeverity: 'warning', // 'info' | 'warning' | 'error' | 'critical'
+  cooldownSeconds: 60, // Evita spam de alertas repetidos
+});
+```
+
+### Envio Manual
+
+```typescript
+// Alerta genérico
+await alerts.send({
+  title: 'Evento Importante',
+  message: 'Descrição detalhada do evento',
+  severity: 'warning',
+  source: 'minha_aplicacao',
+  details: { userId: '123', action: 'login' },
+});
+```
+
+### Métodos de Conveniência
+
+```typescript
+// PII (dados pessoais) detectado
+await alerts.alertPiiDetected(
+  ['cpf', 'email'], // tipos detectados
+  'masked', // ação tomada
+  { userId: '123' } // detalhes extras
+);
+
+// Prompt injection detectado
+await alerts.alertInjectionDetected(
+  'prompt_injection', // tipo
+  0.95, // score de risco (0-1)
+  'blocked', // ação tomada
+);
+
+// Circuit breaker aberto
+await alerts.alertCircuitBreakerOpen(
+  'milvus', // serviço
+  5, // quantidade de falhas
+);
+
+// Rate limit excedido
+await alerts.alertRateLimitExceeded(
+  'vg_abc123...', // API key
+  100, // limite
+  150, // valor atual
+);
+
+// Incidente de segurança (ignora cooldown)
+await alerts.alertSecurityIncident(
+  'unauthorized_access',
+  'Tentativa de acesso não autorizado detectada',
+);
+
+// Erro na API
+await alerts.alertApiError(
+  '/api/search',
+  'Connection timeout',
+  503, // status code
+);
+```
+
+### Configuração via Variáveis de Ambiente
+
+```bash
+export ALERT_WEBHOOK_URL="https://hooks.slack.com/services/xxx"
+export ALERT_WEBHOOK_ENABLED="true"
+export ALERT_WEBHOOK_TYPE="slack"
+export ALERT_MIN_SEVERITY="warning"
+export ALERT_COOLDOWN_SECONDS="60"
+```
+
+### Formato das Mensagens
+
+**Slack:**
+- Mensagens formatadas com attachments coloridos
+- Cores por severidade (verde, laranja, vermelho, roxo)
+- Emojis indicando severidade
+- Campos estruturados para detalhes
+
+**Discord:**
+- Embeds com cores por severidade
+- Campos inline para detalhes
+- Footer com timestamp
+
+### Handler de Log Customizado
+
+```typescript
+// Substitui console.log/warn/error por seu logger
+alerts.setLogHandler((message, severity) => {
+  myLogger.log(severity, message);
+});
 ```
 
 ## Tratamento de Erros

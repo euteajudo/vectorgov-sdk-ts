@@ -5,7 +5,7 @@
  *
  * @example
  * ```typescript
- * import { VectorGov } from 'vectorgov';
+ * import { VectorGov, AlertManager } from 'vectorgov';
  *
  * const vg = new VectorGov({ apiKey: 'vg_sua_chave' });
  *
@@ -20,12 +20,22 @@
  *   model: 'gpt-4',
  *   messages: results.toMessages('O que é ETP?')
  * });
+ *
+ * // Alertas para Slack/Discord
+ * const alerts = new AlertManager({
+ *   webhookUrl: 'https://hooks.slack.com/services/xxx',
+ *   webhookEnabled: true,
+ *   webhookType: 'slack',
+ * });
+ *
+ * await alerts.alertPiiDetected(['cpf', 'email'], 'masked');
  * ```
  *
  * @packageDocumentation
  */
 
 export { VectorGov } from './client';
+export { AlertManager } from './alerts';
 
 export type {
   VectorGovConfig,
@@ -63,6 +73,16 @@ export type {
   // Tipos para Contagem de Tokens
   TokenStats,
   EstimateTokensOptions,
+  // Tipos para Alertas e Webhooks
+  AlertConfig,
+  Alert,
+  AlertSeverity,
+  AlertChannel,
+  WebhookType,
+  SendAlertOptions,
+  AlertResult,
+  SlackPayload,
+  DiscordPayload,
 } from './types';
 
 export {
